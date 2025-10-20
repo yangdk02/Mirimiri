@@ -126,9 +126,6 @@ LGBM_MODEL, THRESHOLD = load_model()
 
 
 
-if LGBM_MODEL is None:
-    st.stop()
-    
 if 'current_month_index' not in st.session_state:
     st.session_state.current_month_index = 0
 
@@ -140,11 +137,14 @@ st.set_page_config(
 st.title('🚨 경영 위기 조기 경보 시스템')
 st.write('우리 동네 가맹점, 위기 신호를 미리 잡아라!')
 
+if LGBM_MODEL is None:
+    st.stop()
 
 
 
 
-st.divider()
+
+st.write('')
 
 
 
@@ -159,7 +159,7 @@ uploaded_file = st.file_uploader(
 
 
 
-st.divider()
+st.write('')
 
 
 
