@@ -138,7 +138,7 @@ st.title('🚨 경영 위기 조기 경보 시스템')
 st.write('우리 동네 가맹점, 위기 신호를 미리 잡아라!')
 
 if LGBM_MODEL is None:
-    st.stop()
+    st.warning('asdfljadslfj')
 
 
 
