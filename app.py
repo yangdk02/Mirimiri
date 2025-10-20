@@ -9,7 +9,7 @@ import lightgbm
 @st.cache_resource
 def load_model():
     try:
-        with open('models/final_lgbm_MODEL_and_threshold.pkl', 'rb') as f:
+        with open('models/final_lgbm_model_and_threshold.pkl', 'rb') as f:
             data = pickle.load(f)
         return data['model'], data['threshold']
     except FileNotFoundError:
