@@ -4,6 +4,7 @@ import numpy as np
 import pickle
 import shap
 import altair as alt
+import lightgbm
 
 @st.cache_resource
 def load_model():
