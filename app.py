@@ -15,6 +15,15 @@ def load_model():
     except FileNotFoundError:
         return None, None
     
+@st.cache_resource
+def load_feature_means():
+    try:
+        with open('data/feature_means.pkl', 'rb') as f:
+            feature_means_dict = pickle.load(f)
+        return feature_means_dict
+    except FileNotFoundError:
+        return {}
+    
 def preprocess_data(df_raw):
     df = df_raw.copy()
     df['TA_YM'] = pd.to_datetime(df['TA_YM'])
@@ -54,6 +63,35 @@ def map_feature_name(feature_name, MAPPING_DCT):
             return f'{original_kor_name}_{dummy_value}'
     return feature_name
 
+def analyze_shap_direction(row, X_predict_row, feature_means):
+    feature = row['Feature']
+    shap_value = row['SHAP_Value']
+    
+    actual_value = X_predict_row.get(feature)
+    mean_value = feature_means.get(feature)
+    
+    is_higher = actual_value > mean_value
+    
+    if shap_value < 0:
+        if is_higher:
+            direction = '클수록 긍정적'
+        else:
+            direction = '작을수록 긍정적'
+    elif shap_value > 0:
+        if is_higher:
+            direction = '클수록 부정적'
+        else:
+            direction = '작을수록 부정적'
+    else:
+        direction = '중립적 영향'
+        
+    return {
+        'Actual_Value': actual_value,
+        'Mean_Value': mean_value,
+        'Direction_KOR': direction,
+        'Value_Comparison': '높음' if is_higher else ('낮음' if actual_value < mean_value else '동일')
+    }
+
 def generate_shap_report(model, X_input, model_features):
     explainer = shap.TreeExplainer(model, model_output='raw')
     shap_values = explainer.shap_values(X_input)  
@@ -68,7 +106,21 @@ def generate_shap_report(model, X_input, model_features):
     top_5_contributing_features['Feature_KOR'] = top_5_contributing_features['Feature'].apply(
         lambda x: map_feature_name(x, MAPPING_DCT)
     )
+    
+    X_predict_row = X_input.iloc[0].to_dict()
+    direction_analysis = top_5_contributing_features.apply(
+        lambda row: analyze_shap_direction(row, X_predict_row, FEATURE_MEANS),
+        axis=1,
+        result_type='expand'
+    )
+    
+    top_5_contributing_features = pd.concat([
+        top_5_contributing_features.reset_index(drop=True), 
+        direction_analysis.reset_index(drop=True)
+    ], axis=1)
+        
     chart_df = top_5_contributing_features[['Feature_KOR', 'SHAP_Value']]
+    
     return prediction, proba, top_5_contributing_features, chart_df
 
 def plot_feature_importances(model, mapping_dct):
@@ -121,6 +173,8 @@ KEY_VARIABLES = [
     'RC_M1_AV_NP_AT',
 ]
 LGBM_MODEL, THRESHOLD = load_model()
+FEATURE_MEANS = load_feature_means()
+KEYCAP = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣']
 
 
 
@@ -130,15 +184,12 @@ if 'current_month_index' not in st.session_state:
     st.session_state.current_month_index = 0
 
 st.set_page_config(
-    page_title='경영 위기 조기 경보 시스템',
-    page_icon='🚨',
+    page_title='Mirimiri | 경영 위기 조기 경보 시스템',
+    page_icon='🌱',
     layout='centered',
 )
-st.title('🚨 경영 위기 조기 경보 시스템')
+st.title('🌱 Mirimiri')
 st.write('우리 동네 가맹점, 위기 신호를 미리 잡아라!')
-
-if LGBM_MODEL is None:
-    st.warning('asdfljadslfj')
 
 
 
@@ -151,7 +202,7 @@ st.write('')
 
 
 uploaded_file = st.file_uploader(
-    '📤 분석할 가맹점의 데이터를 올려 주세요',
+    '📤 분석할 가맹점의 데이터를 올려 주세요.',
     type=['csv'],
 )
 
@@ -264,9 +315,9 @@ if uploaded_file is not None:
 
 
 
-    col1, col2, col3, col4, col5 = st.columns(5)
+    col1, col2, col3, col4, col5, col6, col7 = st.columns(7)
 
-    with col3:
+    with col4:
         if prediction == 1:
             st.image('https://media.giphy.com/media/IzcFv6WJ4310bDeGjo/giphy.gif')
         else:
@@ -283,9 +334,9 @@ if uploaded_file is not None:
 
 
     if prediction == 1:
-        st.error(f'### 🚨 즉각적인 대응이 필요해요. ({proba * 100:.2f}점)')
+        st.error(f'### 🚨 즉각적인 대응이 필요해요. (위기 확률 {proba * 100:.2f}%)')
     else:
-        st.success(f'### ✨ 안정 상태예요. ({proba * 100:.2f}점)')
+        st.success(f'### 🌱 안정 상태예요. (위기 확률 {proba * 100:.2f}%)')
 
 
 
@@ -297,9 +348,9 @@ if uploaded_file is not None:
 
 
 
-    st.subheader(f'🔮 위기 예측 기여도 (상위 5개 변수)')
+    st.subheader(f'🔮 위기 예측 기여도 (상위 5개)')
     
-    st.info(f'😊 SHAP 값은 특정 데이터 포인트의 예측 결과가 나오기까지 각 변수가 얼마나 기여했는지 설명하는 지역적 해석 지표예요.')
+    st.info(f'SHAP 값은 모델의 예측 결과에 대한 각 특성의 기여도를 정량적으로 보여줘요. 양수이면 해당 특성이 예측값을 증가시키는 데 기여한 것이고, 음수이면 감소시키는 데 기여한 것이에요. 막대가 길수록 예측 결과에 미치는 기여도가 커요.')
 
     chart = (
         alt.Chart(chart_data)
@@ -326,17 +377,49 @@ if uploaded_file is not None:
     )
     st.altair_chart(chart, use_container_width=True)
     
-    with st.container(border=True):
-        legend_content = f"""
-            <div>
-                <span style='color:{PASTEL_RED}; font-weight:bold;'>■ 위기 신호</span>: 해당 변수의 값이 위기 확률을 높이는 방향으로 기여했어요.
-                <br>
-                <span style='color:{PASTEL_BLUE}; font-weight:bold;'>■ 안정 신호</span>: 해당 변수의 값이 위기 확률을 낮추는 방향으로 기여했어요.
-                <hr style="margin: 10px 0;">
-                <p style='font-size: 13px; color: #666;'>SHAP 값은 0을 기준으로 하며, 막대가 길수록 예측 결과에 미치는 기여도가 커요.</p>
-            </div>
-        """
-        st.markdown(legend_content, unsafe_allow_html=True)
+    with st.container(border=True):        
+        for index, row in top_features_df.iterrows():
+            korean_name = row['Feature_KOR']
+            shap_value = row['SHAP_Value']
+            direction = row['Direction_KOR']
+            actual_value = row['Actual_Value']
+            mean_value = row['Mean_Value']
+            value_comparison = row['Value_Comparison']
+            
+            if shap_value > 0:
+                action_text = "높이는"
+                color = PASTEL_RED
+                icon = '🔴'
+            else:
+                action_text = "낮추는"
+                color = PASTEL_BLUE
+                icon = '🔵'
+
+            col_icon, col_title, col_value = st.columns([0.2, 4, 2])
+            
+            with col_icon:
+                st.markdown(f'{icon}')
+                
+            with col_title:
+                st.markdown(f'**{korean_name}**')
+                
+            with col_value:
+                st.markdown(f"<p style='text-align:right; font-size:16px; color:gray;'>SHAP 값: {shap_value:.4f}</p>", unsafe_allow_html=True)
+            
+            col_summary, col_detail = st.columns([1, 1])
+            
+            with col_summary:
+                st.markdown(f"위기 확률을 <span style='color:{color};'>{action_text}</span> 방향으로 기여했어요.", unsafe_allow_html=True)
+                st.markdown(f"해당 변수는 <span style='color:{color};'>{direction}</span>이에요.", unsafe_allow_html=True)
+                
+            with col_detail:
+                format_str = '.3f' if isinstance(actual_value, float) or actual_value not in [0, 1] else '.0f'
+                st.metric(
+                    label=f'현재 값',
+                    value=f'{actual_value:{format_str}}',
+                    delta=f'평균: {mean_value:{format_str}}',
+                    delta_color='off'
+                )
 
 
 
@@ -348,9 +431,9 @@ if uploaded_file is not None:
     
     
     
-    st.subheader('🗝️ 변수 중요도 (상위 10개 변수)')
+    st.subheader('🗝️ 변수 중요도 (상위 10개)')
 
-    st.info("😊 이 차트는 특정 시점의 기여도(SHAP)가 아닌, 모델이 학습 과정에서 전반적으로 가장 중요하게 사용한 변수를 보여줘요.")
+    st.info("이 차트는 특정 시점의 기여도(SHAP)가 아닌, 모델이 학습 과정에서 전반적으로 가장 중요하게 사용한 변수를 보여줘요.")
 
     importance_chart = plot_feature_importances(LGBM_MODEL, MAPPING_DCT)
     st.altair_chart(importance_chart, use_container_width=True)
@@ -367,7 +450,7 @@ if uploaded_file is not None:
 
     st.subheader(f'📊 주요 변수 월별 추세')
 
-    st.info('☺️ 0%에 가까울수록 상위예요.')
+    st.info('이 차트는 주요 변수의 월별 추세를 보여줘요. 0%에 가까울수록 상위예요.')
 
     plot_columns = ['TA_YM'] + KEY_VARIABLES
     df_plot = df_cleaned[plot_columns].copy()
