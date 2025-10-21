@@ -226,6 +226,9 @@ if uploaded_file is not None:
     temp_data_row = df_cleaned.iloc[0]
     shop_name = temp_data_row['MCT_NM']
     
+    if st.session_state.current_month_index > max_index or max_index < 0:
+        st.session_state.current_month_index = 0
+    
     st.subheader('👀 가맹점 개요')
     
     with st.container(border=True):
