@@ -138,7 +138,7 @@ def plot_feature_importances(model, mapping_dct):
         .mark_bar()
         .encode(
             y=alt.Y('Feature_KOR', 
-                    title='주요 변수',
+                    title='주요 특성',
                     sort=alt.EncodingSortField(field="Importance", order="descending") 
             ),
             x=alt.X('Importance', 
@@ -146,7 +146,7 @@ def plot_feature_importances(model, mapping_dct):
             ),
             color=alt.value(PASTEL_BLUE),
             tooltip=[
-                alt.Tooltip('Feature_KOR', title='변수'),
+                alt.Tooltip('Feature_KOR', title='특성'),
                 alt.Tooltip('Importance', title='중요도', format='.1f')
             ]
         ).interactive()
@@ -163,8 +163,8 @@ CATEGORICAL_COLS = [
     'HPSN_MCT_ZCD_NM',
     'HPSN_MCT_BZN_CD_NM',
 ]
-PASTEL_RED = '#FF9999'
-PASTEL_BLUE = '#99CCFF'
+PASTEL_RED = '#F08080'
+PASTEL_BLUE = '#6CB77E'
 KEY_VARIABLES = [
     'MCT_OPE_MS_CN',
     'RC_M1_SAA',
@@ -174,7 +174,6 @@ KEY_VARIABLES = [
 ]
 LGBM_MODEL, THRESHOLD = load_model()
 FEATURE_MEANS = load_feature_means()
-KEYCAP = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣']
 
 
 
@@ -202,7 +201,7 @@ st.write('')
 
 
 uploaded_file = st.file_uploader(
-    '📤 분석할 가맹점의 데이터를 올려 주세요.',
+    '📤 데이터를 올려 주세요.',
     type=['csv'],
 )
 
@@ -264,7 +263,7 @@ if uploaded_file is not None:
 
     with col_left:
         disable_left = st.session_state.current_month_index == max_index
-        if st.button('◀ 이전', disabled=disable_left, use_container_width=True):
+        if st.button('◀ 이전', disabled=disable_left, use_container_width=True, type='primary'):
             if st.session_state.current_month_index < max_index:
                 st.session_state.current_month_index += 1
                 st.rerun()
@@ -337,9 +336,9 @@ if uploaded_file is not None:
 
 
     if prediction == 1:
-        st.error(f'### 🚨 즉각적인 대응이 필요해요. (위기 확률 {proba * 100:.2f}%)')
+        st.error(f'🚨 즉각적인 대응이 필요해요. (위기 확률 {proba * 100:.2f}%)')
     else:
-        st.success(f'### 🌱 안정 상태예요. (위기 확률 {proba * 100:.2f}%)')
+        st.success(f'🌱 안정 상태예요. (위기 확률 {proba * 100:.2f}%)')
 
 
 
@@ -360,7 +359,7 @@ if uploaded_file is not None:
         .mark_bar()
         .encode(
             y=alt.Y('Feature_KOR', 
-                    title='변수',
+                    title='특성',
                     sort='-x'
             ),
             x=alt.X('SHAP_Value', 
@@ -372,7 +371,7 @@ if uploaded_file is not None:
                 alt.value(PASTEL_BLUE)
             ),
             tooltip=[
-                alt.Tooltip('Feature_KOR', title='변수'),
+                alt.Tooltip('Feature_KOR', title='특성'),
                 alt.Tooltip('SHAP_Value', title='SHAP 값', format='.4f')
             ]
         )
@@ -396,7 +395,7 @@ if uploaded_file is not None:
             else:
                 action_text = "낮추는"
                 color = PASTEL_BLUE
-                icon = '🔵'
+                icon = '🟢'
 
             col_icon, col_title, col_value = st.columns([0.2, 4, 2])
             
@@ -412,8 +411,10 @@ if uploaded_file is not None:
             col_summary, col_detail = st.columns([1, 1])
             
             with col_summary:
-                st.markdown(f"위기 확률을 <span style='color:{color};'>{action_text}</span> 방향으로 기여했어요.", unsafe_allow_html=True)
-                st.markdown(f"해당 변수는 <span style='color:{color};'>{direction}</span>이에요.", unsafe_allow_html=True)
+                st.markdown(f"""
+                    해당 특성은 위기 확률을 <span style='color:{color};'>{action_text}</span> 방향으로 기여했어요.
+                    <span style='color:{color};'>{direction}</span>이에요.""", unsafe_allow_html=True)
+                st.markdown(f"", unsafe_allow_html=True)
                 
             with col_detail:
                 format_str = '.3f' if isinstance(actual_value, float) or actual_value not in [0, 1] else '.0f'
@@ -434,9 +435,9 @@ if uploaded_file is not None:
     
     
     
-    st.subheader('🗝️ 변수 중요도 (상위 10개)')
+    st.subheader('🗝️ 특성 중요도 (상위 10개)')
 
-    st.info("이 차트는 특정 시점의 기여도(SHAP)가 아닌, 모델이 학습 과정에서 전반적으로 가장 중요하게 사용한 변수를 보여줘요.")
+    st.info("이 차트는 특정 시점의 기여도(SHAP)가 아닌, 모델이 학습 과정에서 전반적으로 가장 중요하게 사용한 특성를 보여줘요.")
 
     importance_chart = plot_feature_importances(LGBM_MODEL, MAPPING_DCT)
     st.altair_chart(importance_chart, use_container_width=True)
@@ -451,9 +452,9 @@ if uploaded_file is not None:
 
 
 
-    st.subheader(f'📊 주요 변수 월별 추세')
+    st.subheader(f'📊 주요 특성 월별 추세')
 
-    st.info('이 차트는 주요 변수의 월별 추세를 보여줘요. 0%에 가까울수록 상위예요.')
+    st.info('이 차트는 주요 특성의 월별 추세를 보여줘요. 0%에 가까울수록 상위예요.')
 
     plot_columns = ['TA_YM'] + KEY_VARIABLES
     df_plot = df_cleaned[plot_columns].copy()
@@ -501,10 +502,10 @@ if uploaded_file is not None:
             'Value_Rank',
             title='구간'
         ),
-        color=alt.Color('Feature_KOR', title='주요 변수'),
+        color=alt.Color('Feature_KOR', title='주요 특성'),
         tooltip=[
             alt.Tooltip('TA_YM', title='연월', format='%Y-%m'), 
-            alt.Tooltip('Feature_KOR', title='변수'),
+            alt.Tooltip('Feature_KOR', title='특성'),
             alt.Tooltip('Value_Rank', title='구간')
         ],
     )
