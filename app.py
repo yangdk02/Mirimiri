@@ -263,7 +263,7 @@ if uploaded_file is not None:
 
     with col_left:
         disable_left = st.session_state.current_month_index == max_index
-        if st.button('◀ 이전', disabled=disable_left, use_container_width=True, type='primary'):
+        if st.button('◀ 이전', disabled=disable_left, use_container_width=True):
             if st.session_state.current_month_index < max_index:
                 st.session_state.current_month_index += 1
                 st.rerun()
