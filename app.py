@@ -92,11 +92,16 @@ def analyze_shap_direction(row, X_predict_row, feature_means):
         'Value_Comparison': '높음' if is_higher else ('낮음' if actual_value < mean_value else '동일')
     }
 
-def generate_shap_report(model, X_input, model_features):
+def generate_shap_report(model, X_input, model_features, X_modified=None):
+    if X_modified is not None:
+        X_final_input = X_modified
+    else:
+        X_final_input = X_input
+    
     explainer = shap.TreeExplainer(model, model_output='raw')
-    shap_values = explainer.shap_values(X_input)  
+    shap_values = explainer.shap_values(X_final_input)  
     shap_values_crisis = shap_values.flatten() 
-    proba = model.predict_proba(X_input)[:, 1][0]
+    proba = model.predict_proba(X_final_input)[:, 1][0]
     prediction = 1 if proba >= THRESHOLD else 0   
     shap_df = pd.DataFrame({
         'Feature': model_features,
@@ -107,7 +112,7 @@ def generate_shap_report(model, X_input, model_features):
         lambda x: map_feature_name(x, MAPPING_DCT)
     )
     
-    X_predict_row = X_input.iloc[0].to_dict()
+    X_predict_row = X_final_input.iloc[0].to_dict()
     direction_analysis = top_5_contributing_features.apply(
         lambda row: analyze_shap_direction(row, X_predict_row, FEATURE_MEANS),
         axis=1,
@@ -153,6 +158,44 @@ def plot_feature_importances(model, mapping_dct):
     )
     return chart
 
+def update_prediction():
+    st.session_state.modified_feature_values = new_values
+    st.rerun()
+
+def get_slider_options(actual, mean, is_categorical=False):
+    if is_categorical or isinstance(actual, (int, np.integer)) and actual in [0, 1]:
+        return [0, 1]
+    else:
+        min_val = min(actual, mean)
+        max_val = max(actual, mean)
+        
+        range_span = max_val - min_val
+        
+        buffer = max(0.1, range_span * 0.2)
+        
+        lower_bound = min_val - buffer
+        upper_bound = max_val + buffer
+        
+        options = np.linspace(lower_bound, upper_bound, 5)
+        precision = 2 if np.max(np.abs(options)) < 1000 and not np.all(options.astype(int) == options) else 0
+        options = [round(float(o), precision) for o in options]
+        
+        if actual not in options:
+            all_options = sorted(list(set(options + [round(float(actual), precision)])))
+            
+            if len(all_options) > 5:
+                options_to_keep = [all_options[0], all_options[-1], round(float(actual), precision)]
+                target_indices = [len(all_options) // 4, len(all_options) * 3 // 4]
+                for idx in target_indices:
+                    if all_options[idx] not in options_to_keep:
+                        options_to_keep.append(all_options[idx])
+                
+                options = sorted(list(set(options_to_keep)))[:5]
+            else:
+                options = all_options
+                
+        return options
+
 
 
 
@@ -181,6 +224,8 @@ FEATURE_MEANS = load_feature_means()
 
 if 'current_month_index' not in st.session_state:
     st.session_state.current_month_index = 0
+if 'modified_feature_values' not in st.session_state:
+    st.session_state.modified_feature_values = {}
 
 st.set_page_config(
     page_title='Mirimiri | 경영 위기 조기 경보 시스템',
@@ -266,6 +311,7 @@ if uploaded_file is not None:
         if st.button('◀ 이전', disabled=disable_left, use_container_width=True):
             if st.session_state.current_month_index < max_index:
                 st.session_state.current_month_index += 1
+                st.session_state.modified_feature_values = {}
                 st.rerun()
 
     with col_center:
@@ -281,6 +327,7 @@ if uploaded_file is not None:
         if st.button('다음 ▶', disabled=disable_right, use_container_width=True):
             if st.session_state.current_month_index > 0:
                 st.session_state.current_month_index -= 1
+                st.session_state.modified_feature_values = {}
                 st.rerun()
     
     selected_date = pd.to_datetime(selected_month_str, format='%Y년 %m월')
@@ -302,15 +349,80 @@ if uploaded_file is not None:
     final_data_row = df_cleaned_selected.iloc[0]
     latest_month = selected_month_str
     
+    X_modified = X_final.copy()
+    if st.session_state.modified_feature_values:
+        for feature, value in st.session_state.modified_feature_values.items():
+            if feature in X_modified.columns:
+                X_modified.loc[X_modified.index, feature] = value    
+    
     with st.spinner(''):
         prediction, proba, top_features_df, chart_data = generate_shap_report(
-            LGBM_MODEL, X_final, model_features
+            LGBM_MODEL, X_final, model_features, X_modified=X_modified
         )
     
     
     
     
     
+    st.write('')
+    
+    
+    
+    
+    with st.expander('⚙️ 위기 요인 시뮬레이션', expanded=False):
+        st.info('아래 슬라이더를 조정하여 **위기 예측 기여도(SHAP 값)** 상위 특성들의 값을 변경하고, **✅ 업데이트** 버튼을 눌러 변경된 값으로 예측 결과와 기여도 변화를 확인하세요.')
+
+        with st.form('feature_simulation_form'):
+            
+            top_5_features = top_features_df.head(5)
+            
+            new_values = {}
+            cols = st.columns(2)
+            
+            for i, row in top_5_features.iterrows():
+                feature_eng = row['Feature']
+                feature_kor = row['Feature_KOR']
+                actual_value = X_final.loc[X_final.index[0], feature_eng]
+                mean_value = FEATURE_MEANS.get(feature_eng, actual_value)
+                
+                is_dummy = feature_eng.rsplit('_', 1)[0] in CATEGORICAL_COLS if '_' in feature_eng else False
+                
+                options = get_slider_options(actual_value, mean_value, is_dummy)
+                default_value = st.session_state.modified_feature_values.get(feature_eng, actual_value)
+                
+                format_str = '.4f' if isinstance(actual_value, float) or actual_value not in [0, 1] else '.0f'
+                
+                col = cols[i % 2]
+                with col:
+                    key = f"slider_{feature_eng}"
+                    
+                    if default_value not in options:
+                        if feature_eng in st.session_state.modified_feature_values:
+                            closest_option = min(options, key=lambda x: abs(x - default_value))
+                            default_value = closest_option
+                        else:
+                            default_value = actual_value if actual_value in options else min(options, key=lambda x: abs(x - actual_value))
+
+                    selected_value = st.select_slider(
+                        label=f'**{feature_kor}** (현재: {default_value:{format_str}})',
+                        options=options,
+                        value=default_value,
+                        key=key,
+                        help=f'원래 값: {actual_value:{format_str}}, 평균: {mean_value:{format_str}}'
+                    )
+                    new_values[feature_eng] = selected_value
+
+            st.form_submit_button(
+                label='✅ 업데이트', 
+                on_click=update_prediction, 
+                use_container_width=True,
+                type='primary'
+            )
+
+
+
+
+
     st.write('')
 
 
@@ -336,15 +448,20 @@ if uploaded_file is not None:
 
 
     if prediction == 1:
-        st.error(f'🚨 즉각적인 대응이 필요해요. (위기 확률 {proba * 100:.2f}%)')
+        st.error(f'🚨 즉각적인 대응이 필요해요. **(위기 확률 {proba * 100:.2f}%)**')
     else:
-        st.success(f'🌱 안정 상태예요. (위기 확률 {proba * 100:.2f}%)')
+        st.success(f'🌱 안정 상태예요. **(위기 확률 {proba * 100:.2f}%)**')
 
 
 
 
 
     st.write('')
+    
+    
+
+    
+    
 
 
 
@@ -352,7 +469,7 @@ if uploaded_file is not None:
 
     st.subheader(f'🔮 위기 예측 기여도 (상위 5개)')
     
-    st.info(f'SHAP 값은 모델의 예측 결과에 대한 각 특성의 기여도를 정량적으로 보여줘요. 양수이면 해당 특성이 예측값을 증가시키는 데 기여한 것이고, 음수이면 감소시키는 데 기여한 것이에요. 막대가 길수록 예측 결과에 미치는 기여도가 커요.')
+    st.info(f'SHAP 값은 모델의 예측 결과에 대한 각 특성의 **기여도**를 정량적으로 보여줘요. 양수이면 해당 특성이 예측값을 **증가**시키는 데 기여한 것이고, 음수이면 **감소**시키는 데 기여한 것이에요. 막대가 길수록 예측 결과에 미치는 기여도가 커요.')
 
     chart = (
         alt.Chart(chart_data)
@@ -426,10 +543,10 @@ if uploaded_file is not None:
                 )
 
 
-
-
-
-    st.text('')
+    
+    
+    
+    st.write('')
     
     
     
