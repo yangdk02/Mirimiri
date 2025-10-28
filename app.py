@@ -249,6 +249,11 @@ uploaded_file = st.file_uploader(
     '📤 데이터를 올려 주세요.',
     type=['csv'],
 )
+col1, col2 = st.columns(2)
+with col1:
+    st.link_button('샘플 데이터셋 1', 'https://drive.google.com/file/d/19j33QOAJvhGGCwkBCH1yjzXDPNGUOotv/view?usp=drive_link')
+with col2:
+    st.link_button('샘플 데이터셋 2', 'https://drive.google.com/file/d/1tkvg109DnkN-JTu544GDJOD03uTcpw32/view?usp=drive_link')
 
 
 
